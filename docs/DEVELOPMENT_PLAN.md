@@ -4,77 +4,73 @@
 
 ---
 
-### フェーズ1: プロジェクトセットアップ
+### フェーズ1: プロジェクト基盤構築
 
-- [x] `docs` ディレクトリの作成とドキュメント設置
-- [x] データベース接続情報の設定 (`.env`)
-- [ ] **【ブロック中】** 必要なPHP拡張機能のインストール (`pdo_mysql`, `pdo_sqlite`)
+- [x] `docs` ディレクトリと基本ドキュメント設置
+- [ ] Laravel Sanctum のインストールと設定
+- [ ] **データベースマイグレーション作成**
+    - [ ] `users` テーブルへのカラム追加 (`form_creation_limit`, `registration_token_id`)
+    - [ ] `roles`, `permissions` テーブル作成
+    - [ ] `role_user`, `permission_role` 中間テーブル作成
+    - [ ] `registration_tokens` テーブル作成
+    - [ ] `forms`, `inquiries`, `email_templates`, `access_tokens` テーブル作成
+- [ ] **マイグレーションファイルの編集**
+    - [ ] 全テーブルのカラム定義を要件定義書に合わせて修正
+- [ ] **モデルの作成とリレーション定義**
+    - [ ] 全モデルの `fillable` プロパティ設定
+    - [ ] モデル間のリレーション (`hasMany`, `belongsToMany` 等) を定義
+- [ ] **シーダーの作成**
+    - [ ] `RolesAndPermissionsSeeder` (デフォルトの役割と権限を作成)
+    - [ ] `EmailTemplateSeeder` (デフォルトのメールテンプレートを作成)
+    - [ ] `DatabaseSeeder` で上記シーダーを呼び出し
+- [ ] `php artisan migrate --seed` を実行してDBを構築
 
 ---
 
-### フェーズ2: 認証・認可機能の実装
+### フェーズ2: 認証・登録機能の実装
 
-- [ ] Laravel Sanctum または Breeze のインストールと設定 (API認証のため)
-- [ ] **データベースマイグレーション**
-    - [ ] `users` テーブル修正 (`role`カラム, `form_creation_limit`カラムの追加)
-    - [ ] `permissions` テーブルのマイグレーション作成
-    - [ ] `permission_user` テーブルのマイグレーション作成
-    - [ ] `forms` テーブル修正 (`user_id` カラムの追加)
 - [ ] **APIエンドポイント実装**
-    - [ ] `/register` (ユーザー登録)
-    - [ ] `/login` (ログイン)
-    - [ ] `/logout` (ログアウト)
-    - [ ] `/api/users` (ユーザー一覧取得 - 管理者)
-    - [ ] `/api/users/{id}` (ユーザー情報更新 - 管理者)
-    - [ ] `/api/users/{id}/permissions` (権限管理 - 管理者)
+    - [ ] `POST /register` (登録トークン検証ロジック込み)
+    - [ ] `POST /login` (Sanctumのトークン発行)
+    - [ ] `POST /logout`
+- [ ] **登録トークン管理 (CRUD)**
+    - [ ] `GET, POST /api/registration-tokens`
+    - [ ] `DELETE /api/registration-tokens/{id}`
+- [ ] **テスト**
+    - [ ] ユーザー登録、ログイン、ログアウトのFeatureテスト
+
+---
+
+### フェーズ3: 権限管理機能の実装 (RBAC)
+
+- [ ] **APIエンドポイント実装**
+    - [ ] `GET, POST /api/roles`
+    - [ ] `GET, PUT, DELETE /api/roles/{id}`
+    - [ ] `GET /api/permissions`
+    - [ ] `GET, PUT /api/users/{id}/roles`
 - [ ] **認可ロジックの実装**
-    - [ ] Gate/Policy を使用して各APIエンドポイントを保護
+    - [ ] APIミドルウェアで、各エンドポイントを適切な権限で保護
+- [ ] **テスト**
+    - [ ] ロール・権限管理APIのFeatureテスト
+    - [ ] 認可ミドルウェアのテスト
 
 ---
 
-### フェーズ3: コア機能のモデルとマイグレーション
+### フェーズ4: コア機能の実装
 
-- [ ] `Form` モデルとマイグレーションファイルの作成
-- [ ] `Inquiry` モデルとマイグレーションファイルの作成
-- [ ] `EmailTemplate` モデルとマイグレーションファイルの作成
-- [ ] `AccessToken` モデル (旧`SubmissionToken`) とマイグレーションファイルの作成
-- [ ] **マイグレーションファイルの修正 (流量制限・権限対応)**
-    - [ ] `forms` テーブルに `daily_limit`, `monthly_limit` カラムを追加
-    - [ ] `access_tokens` テーブルのスキーマを修正
-- [ ] **【ブロック中】** 作成・修正した全マイグレーションを実行してテーブルを構築
-
----
-
-### フェーズ4: APIエンドポイントの実装 (コア機能)
-
-- [ ] **フォーム管理 (CRUD)** (認可チェック込み)
-    - [ ] `POST /api/forms` (作成数上限チェック込み)
-    - [ ] `GET /api/forms`
-    - [ ] `GET /api/forms/{id}`, `PUT /api/forms/{id}`, `DELETE /api/forms/{id}`
-- [ ] **メールテンプレート管理 (CRUD)** (管理者のみ)
-    - [ ] `GET /api/templates`, `POST /api/templates`
-    - [ ] `GET /api/templates/{id}`, `PUT /api/templates/{id}`, `DELETE /api/templates/{id}`
-- [ ] **流量制限管理** (認可チェック込み)
-    - [ ] `PUT /api/forms/{id}/rate-limits`
-- [ ] **問い合わせフロー**
-    - [ ] `GET /api/forms/{form_id}/generate-token`
-    - [ ] `POST /submit/{token}` (流量制限チェック込み)
-- [ ] **問い合わせ履歴** (認可チェック込み)
-    - [ ] `GET /api/forms/{form_id}/inquiries`
+- [ ] **メールテンプレート管理 (CRUD)**
+- [ ] **フォーム管理 (CRUD)** (デフォルトテンプレート設定ロジック込み)
+- [ ] **問い合わせ受付フロー** (`/submit/{token}`)
+- [ ] **問い合わせ履歴閲覧**
+- [ ] **非同期メール送信ジョブ** の実装
+- [ ] **テスト**
+    - [ ] 各コア機能APIのFeatureテスト
 
 ---
 
-### フェーズ5: テストと改善
+### フェーズ5: 仕上げ
 
-- [ ] 認証・認可機能に関するテスト
-- [ ] 各APIエンドポイントのFeatureテスト (権限ごと)
-- [ ] 流量制限・作成数制限機能のテスト
-- [ ] バリデーションルールの実装
-
----
-
-### フェーズ6: ドキュメント
-
-- [x] 要件定義書 (`REQUIREMENTS.md`) の作成
-- [x] 開発計画書 (`DEVELOPMENT_PLAN.md`) の作成
-- [ ] APIの利用方法に関するドキュメントを更新
+- [ ] APIレスポンス形式の統一を徹底
+- [ ] バリデーションとエラーハンドリングの強化
+- [ ] 全体の結合テスト
+- [ ] APIドキュメントの更新

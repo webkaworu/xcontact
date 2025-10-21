@@ -33,16 +33,17 @@ sequenceDiagram
 ## 3. 機能要件
 
 ### 3.1. ユーザー・権限管理
-- システムには2種類のユーザー種別が存在する。
-    - **システム管理者 (`admin`):** 全てのAPI機能を利用できる。
-    - **一般ユーザー (`user`):** 権限が付与された機能のみ利用できる。
-- **認証:** ユーザーはメールアドレスとパスワードで認証を行う。APIへのリクエストには認証トークンが必須となる。
-- **権限管理:**
-    - システム管理者は、一般ユーザーに対して機能ごとの利用権限を付与・剥奪できる。
-    - 一般ユーザーの初期権限は以下に限定される。
-        - 自身の問い合わせフォームの作成
-        - 自身の問い合わせフォームへの送信
-        - 自身の問い合わせフォームの履歴閲覧
+- **登録トークンによる招待制:** ユーザー登録には、システム管理者が発行した**登録トークン**が必須となる。
+- **ロールベースの権限管理 (RBAC):**
+    - システムには**役割（ロール）**が存在し（例: `システム管理者`, `一般ユーザー`）、ユーザーには一つまたは複数のロールが割り当てられる。
+    - 各ロールには、実行可能な操作（**権限（パーミッション）**、例: `forms.create`, `users.delete`）が紐付けられる。
+    - これにより、ユーザーが持つロールに応じて、アクセスできる機能が厳密に制御される。
+    - システム管理者は、ユーザーのロールを管理し、各ロールに紐づく権限を編集できる。
+- **登録トークン管理:**
+    - システム管理者は、ユーザー招待用の**登録トークン**を発行・一覧表示・削除できる。
+    - 発行されたトークンは何度でも使用可能。
+    - どのユーザーがどのトークンを使用して登録したかが記録される。
+    - トークンには有効期限や、特定のメールアドレスのみに利用を限定する設定も可能。
 - **フォーム作成数制限:**
     - 一般ユーザーが作成できるフォームの数に上限を設ける。
     - 初期値は1ユーザーあたり最大10個までとする。
@@ -55,6 +56,7 @@ sequenceDiagram
     - 問い合わせ通知メールの送信先アドレス
     - 自動返信メールの有効/無効設定
     - 利用するメールテンプレート（管理者通知用、自動返信用）
+- フォーム作成時、システムのデフォルトメールテンプレートが自動で設定される。
 
 ### 3.3. アクセストークン発行機能
 - フォームからの問い合わせを受け付けるための、永続的なアクセストークンを発行する。
@@ -70,6 +72,7 @@ sequenceDiagram
 
 ### 3.5. メールテンプレート管理機能 (CRUD)
 - 管理者権限を持つユーザーは、メールテンプレートを管理できる。
+- システムにデフォルトのメールテンプレートが用意されており、フォーム作成時に自動で設定される。
 
 ### 3.6. 問い合わせ履歴管理機能
 - ユーザーは自身のフォームの問い合わせ履歴を閲覧できる。
@@ -82,37 +85,63 @@ sequenceDiagram
 
 ## 4. API設計（案）
 
-- **認証:** 全ての管理系APIは認証・認可(Gate/Policy)によって保護される。
+- **認証・認可:** 
+    - API認証には **Laravel Sanctum** を利用する。
+    - `/register`, `/login`, `/submit/{token}` といった一部の公開エンドポイントを除き、`/api/` で始まる全ての管理系APIは認証が必須です。
+    - 認証が必要なAPIへアクセスするには、まず `/login` エンドポイントで認証を行い、発行されたAPIトークンを以降のリクエストのヘッダー（`Authorization: Bearer {token}`）に含めて送信する必要があります。
+    - 加えて、各エンドポイントではRBAC（ロールベースアクセス制御）に基づき、ユーザーの役割に応じた操作制限が行われます。
 
-| エンドポイント | HTTPメソッド | 説明 | 対象ユーザー |
+- **APIレスポンス形式:**
+    - APIのレスポンスは、以下のJSON形式に統一する。
+    - **成功時 (`2xx`系ステータスコード):**
+        ```json
+        {
+            "data": {
+                // レスポンスデータ本体
+            }
+        }
+        ```
+    - **エラー時 (`4xx`, `5xx`系ステータスコード):**
+        ```json
+        {
+            "message": "エラーの概要メッセージ",
+            "errors": {
+                "field_name": ["エラー詳細1", "エラー詳細2"]
+            }
+        }
+        ```
+
+| エンドポイント | HTTPメソッド | 説明 | 対象ロール・権限 |
 | :--- | :--- | :--- | :--- |
-| `/register` | `POST` | ユーザー登録 | 全員 |
+| `/register` | `POST` | ユーザー登録（要登録トークン） | 全員 |
 | `/login` | `POST` | ログイン | 全員 |
 | `/logout` | `POST` | ログアウト | 認証ユーザー |
-| `/api/users` | `GET` | ユーザー一覧取得 | 管理者 |
-| `/api/users/{id}` | `PUT` | ユーザー情報（作成数上限など）を更新 | 管理者 |
-| `/api/users/{id}/permissions` | `GET`, `PUT` | ユーザーの権限を取得・更新 | 管理者 |
-| `/api/forms` | `GET`, `POST` | フォーム作成・一覧取得 | 認証ユーザー |
-| `/api/forms/{id}` | `GET`, `PUT`, `DELETE` | フォーム詳細・更新・削除 | フォーム所有者/管理者 |
-| `/api/forms/{id}/rate-limits` | `PUT` | フォームの流量制限を設定 | フォーム所有者/管理者 |
-| `/api/forms/{form_id}/generate-token`| `GET` | アクセストークンを発行 | フォーム所有者/管理者 |
+| `/api/registration-tokens` | `GET`, `POST` | 登録トークンの一覧取得・発行 | `users.manage` |
+| `/api/registration-tokens/{id}` | `DELETE` | 登録トークンの削除 | `users.manage` |
+| `/api/users` | `GET` | ユーザー一覧取得 | `users.view` |
+| `/api/users/{id}` | `PUT` | ユーザー情報（作成数上限など）を更新 | `users.manage` |
+| `/api/users/{id}/roles` | `GET`, `PUT` | ユーザーのロールを取得・更新 | `roles.manage` |
+| `/api/roles` | `GET`, `POST` | ロール一覧取得・作成 | `roles.manage` |
+| `/api/roles/{id}` | `GET`, `PUT`, `DELETE` | ロール詳細・更新・削除 | `roles.manage` |
+| `/api/permissions` | `GET` | 権限一覧取得 | `roles.manage` |
+| `/api/forms` | `GET`, `POST` | フォーム作成・一覧取得 | `forms.create` |
+| `/api/forms/{id}` | `GET`, `PUT`, `DELETE` | フォーム詳細・更新・削除 | `forms.manage` (所有者) |
 | `/submit/{token}` | `POST` | （公開）フォームからのデータ受付 | 全員 |
-| `/api/inquiries` | `GET` | 問い合わせ履歴一覧 | 管理者 |
-| `/api/forms/{form_id}/inquiries` | `GET` | フォームごとの問い合わせ履歴 | フォーム所有者/管理者 |
-| `/api/templates` | `GET`, `POST` | メールテンプレート作成・一覧 | 管理者 |
-| `/api/templates/{id}` | `GET`, `PUT`, `DELETE` | テンプレート詳細・更新・削除 | 管理者 |
+| `/api/inquiries` | `GET` | 問い合わせ履歴一覧 | `inquiries.view` |
+| `/api/templates` | `GET`, `POST` | メールテンプレート作成・一覧 | `templates.manage` |
+| `/api/templates/{id}` | `GET`, `PUT`, `DELETE` | テンプレート詳細・更新・削除 | `templates.manage` |
 
 ## 5. データベース設計（案）
 
-**1. users** (既存テーブルを修正)
+**1. users**
 | カラム名 | 型 | 説明 |
 | :--- | :--- | :--- |
 | `id` | `bigint`, `PK` | ID |
 | `name` | `varchar` | ユーザー名 |
 | `email` | `varchar`, `unique` | メールアドレス |
 | `password` | `varchar` | パスワード |
-| `role` | `enum('admin', 'user')` | ユーザー種別 |
 | `form_creation_limit` | `integer`, `nullable` | フォーム作成上限数。nullは無制限。 |
+| `registration_token_id` | `foreignId`, `nullable` | 登録時に使用された登録トークンのID |
 | `created_at`, `updated_at` | `timestamp` | ... |
 
 **2. forms (フォーム設定)**
@@ -145,9 +174,10 @@ sequenceDiagram
 | `type` | `enum('notification', 'auto_reply')` | テンプレート種別 |
 | `subject` | `varchar` | 件名 |
 | `body` | `text` | 本文 |
+| `is_default` | `boolean` | システムのデフォルトテンプレートか |
 | `created_at`, `updated_at` | `timestamp` | 作成日時, 更新日時 |
 
-**5. access_tokens (アクセストークン管理)**
+**5. access_tokens (フォーム受付トークン)**
 | カラム名 | 型 | 説明 |
 | :--- | :--- | :--- |
 | `id` | `bigint`, `PK` | ID |
@@ -156,18 +186,43 @@ sequenceDiagram
 | `expires_at` | `timestamp`, `nullable` | トークンの有効期限 |
 | `created_at` | `timestamp` | 作成日時 |
 
-**6. permissions (権限定義)**
+**6. registration_tokens (登録トークン)**
 | カラム名 | 型 | 説明 |
 | :--- | :--- | :--- |
 | `id` | `bigint`, `PK` | ID |
-| `name` | `varchar`, `unique` | 権限名 (例: `form.create`) |
-| `description` | `varchar` | 権限の説明 |
+| `token` | `varchar`, `unique` | 一意の登録トークン |
+| `email` | `varchar`, `nullable` | 招待を許可するメールアドレス (nullは誰でも可) |
+| `expires_at` | `timestamp`, `nullable` | トークンの有効期限 |
+| `created_by` | `foreignId` | 発行した管理者ユーザーのID |
+| `created_at`, `updated_at` | `timestamp` | 作成日時, 更新日時 |
 
-**7. permission_user (ユーザー権限の関連)**
+**7. roles (役割)**
+| カラム名 | 型 | 説明 |
+| :--- | :--- | :--- |
+| `id` | `bigint`, `PK` | ID |
+| `name` | `varchar`, `unique` | ロール名 (例: `admin`, `user`) |
+| `description` | `varchar`, `nullable` | ロールの説明 |
+| `created_at`, `updated_at` | `timestamp` | ... |
+
+**8. permissions (権限)**
+| カラム名 | 型 | 説明 |
+| :--- | :--- | :--- |
+| `id` | `bigint`, `PK` | ID |
+| `name` | `varchar`, `unique` | 権限名 (例: `users.manage`) |
+| `description` | `varchar`, `nullable` | 権限の説明 |
+| `created_at`, `updated_at` | `timestamp` | ... |
+
+**9. role_user (ユーザーのロール)**
+| カラム名 | 型 | 説明 |
+| :--- | :--- | :--- |
+| `role_id` | `foreignId` | ロールID |
+| `user_id` | `foreignId` | ユーザーID |
+
+**10. permission_role (ロールの権限)**
 | カラム名 | 型 | 説明 |
 | :--- | :--- | :--- |
 | `permission_id` | `foreignId` | 権限ID |
-| `user_id` | `foreignId` | ユーザーID |
+| `role_id` | `foreignId` | ロールID |
 
 ## 6. 非機能要件
 - **セキュリティ:**
