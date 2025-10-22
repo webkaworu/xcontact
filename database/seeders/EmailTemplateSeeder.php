@@ -2,9 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use App\Models\EmailTemplate;
+use App\Infrastructure\Persistence\Eloquent\EmailTemplate;
 
 class EmailTemplateSeeder extends Seeder
 {
@@ -15,20 +14,22 @@ class EmailTemplateSeeder extends Seeder
     {
         // Default Notification Template
         EmailTemplate::firstOrCreate(
-            ['name' => 'Default Notification Template', 'type' => 'notification'],
+            ['name' => 'Default Notification'],
             [
-                'subject' => '新しいお問い合わせがありました',
-                'body' => "ウェブサイトから新しいお問い合わせがありました。\n\nお問い合わせ内容:\n{inquiry_data}\n",
+                'type' => 'notification',
+                'subject' => '新しい問い合わせがありました',
+                'body' => "フォーム名: {form_name}\n送信者: {sender_email}\n内容: {inquiry_data}",
                 'is_default' => true,
             ]
         );
 
-        // Default Auto Reply Template
+        // Default Auto-Reply Template
         EmailTemplate::firstOrCreate(
-            ['name' => 'Default Auto Reply Template', 'type' => 'auto_reply'],
+            ['name' => 'Default Auto-Reply'],
             [
+                'type' => 'auto_reply',
                 'subject' => 'お問い合わせありがとうございます',
-                'body' => "{user_name}様\n\nお問い合わせありがとうございます。内容を確認後、改めてご連絡させていただきます。\n\nお問い合わせ内容:\n{inquiry_data}\n",
+                'body' => "{sender_name}様\n\nお問い合わせありがとうございます。\n以下の内容でお問い合わせを受け付けました。\n\nフォーム名: {form_name}\n内容: {inquiry_data}\n\n後ほど担当者よりご連絡いたします。",
                 'is_default' => true,
             ]
         );

@@ -2,67 +2,98 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
-use App\Models\RegistrationToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Foundation\Testing\WithFaker;
 use Tests\TestCase;
+use App\Infrastructure\Persistence\Eloquent\User;
+use App\Infrastructure\Persistence\Eloquent\RegistrationToken;
+use App\Infrastructure\Persistence\Eloquent\Plan;
 
 class AuthTest extends TestCase
 {
     use RefreshDatabase;
+    use WithFaker;
 
-    public function test_user_can_register_with_valid_token(): void
+    protected function setUp(): void
     {
-        $token = RegistrationToken::create([
-            'token' => 'test-token',
-            'created_by' => User::factory()->create(['email' => 'testadmin@example.com'])->id,
-        ]);
-
-        $response = $this->postJson('/api/register', [
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'password' => 'password',
-            'password_confirmation' => 'password',
-            'token' => 'test-token',
-        ]);
-
-        $response->assertStatus(201);
-        $this->assertDatabaseHas('users', ['email' => 'test@example.com']);
+        parent::setUp();
+        $this->seed(\Database\Seeders\PlansSeeder::class);
     }
 
-    public function test_user_cannot_register_with_invalid_token(): void
+    /** @test */
+    public function a_user_can_register_with_a_valid_registration_token()
     {
+        $registrationToken = RegistrationToken::factory()->create();
+        $password = 'password';
+
         $response = $this->postJson('/api/register', [
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'password' => 'password',
-            'password_confirmation' => 'password',
-            'token' => 'invalid-token',
+            'name' => $this->faker->name,
+            'email' => $this->faker->unique()->safeEmail,
+            'password' => $password,
+            'password_confirmation' => $password,
+            'registration_token' => $registrationToken->token,
         ]);
 
-        $response->assertStatus(422);
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'data' => [
+                    'user' => ['id', 'name', 'email'],
+                    'token',
+                ],
+            ]);
+
+        $this->assertCount(2, User::all()); // RegistrationToken creates one user, plus the new user
     }
 
-    public function test_user_can_login_with_valid_credentials(): void
+    /** @test */
+    public function a_user_cannot_register_with_an_invalid_registration_token()
     {
+        $password = 'password';
+
+        $response = $this->postJson('/api/register', [
+            'name' => $this->faker->name,
+            'email' => $this->faker->unique()->safeEmail,
+            'password' => $password,
+            'password_confirmation' => $password,
+            'registration_token' => 'invalid_token',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['registration_token']);
+
+        $this->assertCount(0, User::all());
+    }
+
+    /** @test */
+    public function a_user_can_login_with_valid_credentials()
+    {
+        $defaultPlan = Plan::where('name', '無料プラン')->first();
         $user = User::factory()->create([
-            'password' => Hash::make('password'),
+            'password' => bcrypt($password = 'password'),
+            'plan_id' => $defaultPlan->id,
         ]);
 
         $response = $this->postJson('/api/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'password' => $password,
         ]);
 
         $response->assertStatus(200)
-            ->assertJsonStructure(['token']);
+            ->assertJsonStructure([
+                'data' => [
+                    'user' => ['id', 'name', 'email'],
+                    'token',
+                ],
+            ]);
     }
 
-    public function test_user_cannot_login_with_invalid_credentials(): void
+    /** @test */
+    public function a_user_cannot_login_with_invalid_credentials()
     {
+        $defaultPlan = Plan::where('name', '無料プラン')->first();
         $user = User::factory()->create([
-            'password' => Hash::make('password'),
+            'password' => bcrypt('password'),
+            'plan_id' => $defaultPlan->id,
         ]);
 
         $response = $this->postJson('/api/login', [
@@ -70,20 +101,28 @@ class AuthTest extends TestCase
             'password' => 'wrong-password',
         ]);
 
-        $response->assertStatus(401);
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['email']);
     }
 
-    public function test_user_can_logout(): void
+    /** @test */
+    public function a_logged_in_user_can_logout()
     {
-        $user = User::factory()->create();
-        $token = $user->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/api/logout');
-
-        $response->assertStatus(200);
-        $this->assertDatabaseMissing('personal_access_tokens', [
-            'tokenable_id' => $user->id,
+        $defaultPlan = Plan::where('name', '無料プラン')->first();
+        $user = User::factory()->create([
+            'plan_id' => $defaultPlan->id,
         ]);
+        $token = $user->createToken('test_token')->plainTextToken;
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $token,
+        ])->postJson('/api/logout');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'message' => 'ログアウトしました。',
+            ]);
+
+        $this->assertCount(0, $user->tokens);
     }
 }

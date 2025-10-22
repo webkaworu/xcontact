@@ -2,13 +2,14 @@
 
 namespace Database\Seeders;
 
-use App\Models\Role;
-use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Infrastructure\Persistence\Eloquent\User;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
+    use WithoutModelEvents;
+
     /**
      * Seed the application's database.
      */
@@ -17,22 +18,12 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolesAndPermissionsSeeder::class,
             EmailTemplateSeeder::class,
+            PlansSeeder::class,
         ]);
 
-        // Create Admin User
-        $adminUser = User::factory()->create([
-            'name' => 'Admin User',
-            'email' => 'admin@example.com',
+        User::factory()->create([
+            'name' => 'Test User',
+            'email' => 'test@example.com',
         ]);
-        $adminRole = Role::where('name', 'admin')->first();
-        $adminUser->roles()->attach($adminRole);
-
-        // Create General User
-        $generalUser = User::factory()->create([
-            'name' => 'General User',
-            'email' => 'user@example.com',
-        ]);
-        $userRole = Role::where('name', 'user')->first();
-        $generalUser->roles()->attach($userRole);
     }
 }
